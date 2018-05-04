@@ -1,86 +1,97 @@
 var sodium = require('sodium-native')
+var assert = require('nanoassert')
 
-function init () {
-  var a = Buffer.alloc(sodium.crypto_scalarmult_ed25519_SCALARBYTES)
-  randomScalar(a)
+module.exports = {
+  init,
+  commit,
+  open,
+  addCommitments,
+  addDecommitments,
 
-  var h = Buffer.alloc(sodium.crypto_scalarmult_ed25519_BYTES)
-  sodium.crypto_scalarmult_ed25519_base(h, a)
-
-  return h
+  PARAM_BYTES: sodium.crypto_scalarmult_ed25519_BYTES,
+  COMMITMENT_BYTES: sodium.crypto_scalarmult_ed25519_BYTES,
+  DATA_BYTES: sodium.crypto_scalarmult_ed25519_SCALARBYTES,
+  RBYTES: sodium.crypto_scalarmult_ed25519_SCALARBYTES
 }
 
-function commit (x, h, r) {
-  if (!r) {
-    r = Buffer.alloc(sodium.crypto_scalarmult_ed25519_SCALARBYTES)
-    randomScalar(r)
+var rnd = sodium.sodium_malloc(sodium.crypto_core_ed25519_UNIFORMBYTES)
+function init (out) {
+  assert(out.byteLength === sodium.crypto_scalarmult_ed25519_BYTES)
+
+  sodium.randombytes_buf(rnd)
+  sodium.crypto_core_ed25519_from_uniform(out, rnd)
+  assert(sodium.crypto_core_ed25519_is_valid_point(out))
+  sodium.sodium_memzero(rnd)
+}
+
+var xG = sodium.sodium_malloc(sodium.crypto_scalarmult_ed25519_BYTES)
+var rH = sodium.sodium_malloc(sodium.crypto_scalarmult_ed25519_BYTES)
+function commit (commitment, r, x, H, rr) {
+  assert(commitment.byteLength === sodium.crypto_scalarmult_ed25519_BYTES)
+  assert(r.byteLength === sodium.crypto_scalarmult_ed25519_SCALARBYTES)
+  assert(x.byteLength === sodium.crypto_scalarmult_ed25519_SCALARBYTES)
+  assert(H.byteLength === sodium.crypto_scalarmult_ed25519_BYTES)
+  assert(sodium.sodium_is_zero(x, x.byteLength) === false)
+  assert(sodium.crypto_core_ed25519_is_valid_point(H))
+
+  sodium.crypto_scalarmult_ed25519_base(xG, x)
+  assert(sodium.crypto_core_ed25519_is_valid_point(xG))
+  if (!rr) {
+    sodium.randombytes_buf(r)
+    r[0] = 0
+    r[31] = 0
   }
+  else r.set(rr)
+  sodium.crypto_scalarmult_ed25519(rH, r, H)
+  assert(sodium.crypto_core_ed25519_is_valid_point(rH))
+  sodium.crypto_core_ed25519_add(commitment, xG, rH)
+  sodium.sodium_memzero(xG)
+  sodium.sodium_memzero(rH)
+  assert(sodium.crypto_core_ed25519_is_valid_point(commitment))
+}
 
-  var xG = Buffer.alloc(sodium.crypto_scalarmult_ed25519_BYTES)
-  var rH = Buffer.alloc(sodium.crypto_scalarmult_ed25519_BYTES)
+var c = sodium.sodium_malloc(sodium.crypto_core_ed25519_BYTES)
+function open (commitment, r, x, H) {
+  assert(commitment.byteLength === sodium.crypto_scalarmult_ed25519_BYTES)
+  assert(r.byteLength === sodium.crypto_scalarmult_ed25519_SCALARBYTES)
+  assert(x.byteLength === sodium.crypto_scalarmult_ed25519_SCALARBYTES)
+  assert(H.byteLength === sodium.crypto_scalarmult_ed25519_BYTES)
+  // assert(sodium.crypto_core_ed25519_is_valid_point(commitment))
+  assert(sodium.crypto_core_ed25519_is_valid_point(H))
+  assert(sodium.sodium_is_zero(r, r.byteLength) === false, 'r must be valid scalar')
+  assert(sodium.sodium_is_zero(x, x.byteLength) === false, 'x must be valid scalar')
 
   sodium.crypto_scalarmult_ed25519_base(xG, x)
-  sodium.crypto_scalarmult_ed25519(rH, r, h)
+  assert(sodium.crypto_core_ed25519_is_valid_point(xG))
+  sodium.crypto_scalarmult_ed25519(rH, r, H)
+  assert(sodium.crypto_core_ed25519_is_valid_point(rH))
 
-  var commitment = Buffer.alloc(sodium.crypto_core_ed25519_BYTES)
-  sodium.crypto_core_ed25519_add(commitment, xG, rH)
+  sodium.crypto_core_ed25519_add(c, xG, rH)
+  sodium.sodium_memzero(xG)
+  sodium.sodium_memzero(rH)
+  assert(sodium.crypto_core_ed25519_is_valid_point(c))
 
-  return [commitment, r]
+  var res = sodium.sodium_memcmp(commitment, c, commitment.byteLength)
+  sodium.sodium_memzero(c)
+  return res
 }
 
-function open (c, x, r, h) {
-  var xG = Buffer.alloc(sodium.crypto_scalarmult_ed25519_BYTES)
-  var rH = Buffer.alloc(sodium.crypto_scalarmult_ed25519_BYTES)
+function addDecommitments (out, r1, r2) {
+  assert(out.byteLength === sodium.crypto_scalarmult_ed25519_SCALARBYTES)
+  assert(r1.byteLength === sodium.crypto_scalarmult_ed25519_SCALARBYTES)
+  assert(r2.byteLength === sodium.crypto_scalarmult_ed25519_SCALARBYTES)
 
-  sodium.crypto_scalarmult_ed25519_base(xG, x)
-  sodium.crypto_scalarmult_ed25519(rH, r, h)
-
-  var commitment = Buffer.alloc(sodium.crypto_core_ed25519_BYTES)
-  sodium.crypto_core_ed25519_add(commitment, xG, rH)
-
-  return sodium.sodium_memcmp(c, commitment, c.byteLength)
+  sodium.sodium_add(out, r1)
+  sodium.sodium_add(out, r2)
 }
 
-function add(c1, c2, r1, r2, h) {
-  var rsum = Buffer.from(r1)
-  sodium.sodium_add(rsum, r2)
+function addCommitments (out, c1, c2) {
+  assert(out.byteLength === sodium.crypto_core_ed25519_BYTES)
+  assert(c1.byteLength === sodium.crypto_core_ed25519_BYTES)
+  assert(c2.byteLength === sodium.crypto_core_ed25519_BYTES)
+  assert(sodium.crypto_core_ed25519_is_valid_point(c1), 'c1 must be valid point')
+  assert(sodium.crypto_core_ed25519_is_valid_point(c2), 'c2 must be valid point')
 
-  var csum = Buffer.alloc(sodium.crypto_core_ed25519_BYTES)
-  sodium.crypto_core_ed25519_add(csum, c1, c2)
-  return [csum, rsum]
-}
-
-function randomScalar (s) {
-  sodium.randombytes_buf(s.slice(0, 31)) // 248 bits
-  s[0] &= 248 // clear lower 3 bits
-}
-
-var h = init()
-var x = Buffer.alloc(sodium.crypto_scalarmult_ed25519_SCALARBYTES)
-var y = Buffer.alloc(sodium.crypto_scalarmult_ed25519_SCALARBYTES)
-var z = Buffer.alloc(sodium.crypto_scalarmult_ed25519_SCALARBYTES)
-
-var sum = Buffer.alloc(sodium.crypto_scalarmult_ed25519_SCALARBYTES)
-
-for (var i = 0; i < 1e6; i++) {
-  sum.fill(0)
-  x.writeUIntLE(sodium.randombytes_uniform(0xffffffff), 6, 6)
-  y.writeUIntLE(sodium.randombytes_uniform(0xffffffff), 6, 6)
-  z.writeUIntLE(sodium.randombytes_uniform(0xffffffff), 6, 6)
-
-  sodium.sodium_add(sum, x)
-  sodium.sodium_add(sum, y)
-  sodium.sodium_add(sum, z)
-
-  var [c1, r1] = commit(x, h)
-  var [c2, r2] = commit(y, h)
-  var [c3, r3] = commit(z, h)
-
-  var [cs1, rs1] = add(c1, c2, r1, r2, h)
-  var [cs2, rs2] = add(cs1, c3, rs1, r3, h)
-
-  if (open(c1, x, r1, h) === false) process.exit(1)
-  if (open(c2, y, r2, h) === false) process.exit(2)
-  if (open(c3, z, r3, h) === false) process.exit(3)
-  if (open(cs2, sum, rs2, h) === false) process.exit(4)
+  sodium.crypto_core_ed25519_add(out, c1, c2)
+  assert(sodium.crypto_core_ed25519_is_valid_point(out))
 }
