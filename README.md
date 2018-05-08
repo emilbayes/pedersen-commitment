@@ -2,6 +2,9 @@
 
 >
 
+Note: This requires a modified libsodium to run without scalar clamping on EC
+operations
+
 ## Usage
 
 ```js
