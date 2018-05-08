@@ -28,6 +28,7 @@ var pedersen = require('pedersen-commitments')
 ### `pedersen.addCommitments(sum, a, b)`
 
 ### `pedersen.addDecommitments(sum, a, b)`
+Note: this function is **NOT** constant-time.
 
 ## Install
 

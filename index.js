@@ -1,5 +1,8 @@
 var sodium = require('sodium-native')
 var assert = require('nanoassert')
+var codec = require('biguintle')
+
+var ORDER = 2n ** 252n + 27742317777372353535851937790883648493n
 
 module.exports = {
   init,
@@ -38,8 +41,7 @@ function commit (commitment, r, x, H, rr) {
   assert(sodium.crypto_core_ed25519_is_valid_point(xG))
   if (!rr) {
     sodium.randombytes_buf(r)
-    r[0] = 0
-    r[31] = 0
+    r[31] = 0b00001111
   }
   else r.set(rr)
   sodium.crypto_scalarmult_ed25519(rH, r, H)
@@ -81,8 +83,37 @@ function addDecommitments (out, r1, r2) {
   assert(r1.byteLength === sodium.crypto_scalarmult_ed25519_SCALARBYTES)
   assert(r2.byteLength === sodium.crypto_scalarmult_ed25519_SCALARBYTES)
 
-  sodium.sodium_add(out, r1)
-  sodium.sodium_add(out, r2)
+  var nlz1 = Math.clz32(r1[31] << 24)
+  var nlz2 = Math.clz32(r2[31] << 24)
+
+  // since clz(ORDER) is 3, we know that nlz > 4 can at most be ~ ORDER / 2
+  if (nlz1 > 4 && nlz2 > 4) {
+    sodium.sodium_add(out, r1)
+    sodium.sodium_add(out, r2)
+    return
+  }
+
+  // if msb of r1 and r2 is 0, then we can safely add them without overflow
+  var willNotOverflow1 = nlz1 > 0 && nlz2 > 0
+  // otherwise if msb of either is 1, then nlz of the other must be at least 2
+  // to prevent overflow (triangle inequality)
+  var willNotOverflow2 = nlz1 > 1 || nlz2 > 1
+
+  // and then decode
+  if (willNotOverflow1 || willNotOverflow2) {
+    sodium.sodium_add(out, r1)
+    sodium.sodium_add(out, r2)
+    codec.encode(codec.decode(out, 0, 32) % ORDER, out)
+    out.fill(0, codec.encode.bytes)
+    return
+  }
+
+  // otherwise we need to do a full decoding
+  var n1 = codec.decode(r1)
+  var n2 = codec.decode(r2)
+  var nout = (n1 + n2) % ORDER
+  codec.encode(nout, out)
+  out.fill(0, codec.encode.bytes)
 }
 
 function addCommitments (out, c1, c2) {
