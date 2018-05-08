@@ -29,49 +29,35 @@ function init (out) {
 
   sodium.randombytes_buf(rnd)
   sodium.crypto_core_ed25519_from_uniform(out, rnd)
-  assert(sodium.crypto_core_ed25519_is_valid_point(out))
   sodium.sodium_memzero(rnd)
 }
 
 var xG = sodium.sodium_malloc(sodium.crypto_scalarmult_ed25519_BYTES)
 var rH = sodium.sodium_malloc(sodium.crypto_scalarmult_ed25519_BYTES)
-function commit (commitment, r, x, H, rr) {
-  assert(sodium.sodium_is_zero(x, x.byteLength) === false)
+function commit (commitment, r, x, H, useR) {
   assert(commitment.byteLength === COMMITMENT_BYTES, 'commitment must be COMMITMENT_BYTES long')
   assert(r.byteLength === RBYTES, 'r must be RBYTES long')
   assert(x.byteLength === DATA_BYTES, 'x must be DATA_BYTES long')
   assert(H.byteLength === PARAM_BYTES, 'H must be PARAM_BYTES long')
-  assert(sodium.crypto_core_ed25519_is_valid_point(H))
+  assert(sodium.crypto_core_ed25519_is_valid_point(H), 'H must be valid point')
 
   sodium.crypto_scalarmult_ed25519_base(xG, x)
-  assert(sodium.crypto_core_ed25519_is_valid_point(xG))
-  if (!rr) {
+  if (useR !== true) {
     sodium.randombytes_buf(r)
-    r[31] = 0b00001111
+    r[31] &= 0b00001111
   }
-  else r.set(rr)
   sodium.crypto_scalarmult_ed25519(rH, r, H)
-  assert(sodium.crypto_core_ed25519_is_valid_point(rH))
   sodium.crypto_core_ed25519_add(commitment, xG, rH)
   sodium.sodium_memzero(xG)
   sodium.sodium_memzero(rH)
-  assert(sodium.crypto_core_ed25519_is_valid_point(commitment))
 }
 
 var c = sodium.sodium_malloc(sodium.crypto_core_ed25519_BYTES)
 function open (commitment, r, x, H) {
-  // assert(sodium.crypto_core_ed25519_is_valid_point(commitment))
-  sodium.crypto_scalarmult_ed25519_base(xG, x)
-  assert(sodium.crypto_core_ed25519_is_valid_point(xG))
-  sodium.crypto_scalarmult_ed25519(rH, r, H)
-  assert(sodium.crypto_core_ed25519_is_valid_point(rH))
   // defer all other assertions to `commit`
-  assert(sodium.crypto_core_ed25519_is_valid_point(commitment), 'commitment must be a valid point')
+  assert(sodium.crypto_core_ed25519_is_valid_point(commitment), 'commitment must be valid point')
 
-  sodium.crypto_core_ed25519_add(c, xG, rH)
-  sodium.sodium_memzero(xG)
-  sodium.sodium_memzero(rH)
-  assert(sodium.crypto_core_ed25519_is_valid_point(c))
+  commit(c, r, x, H, true)
 
   var res = sodium.sodium_memcmp(commitment, c, commitment.byteLength)
   sodium.sodium_memzero(c)
@@ -124,5 +110,4 @@ function addCommitments (out, c1, c2) {
   assert(sodium.crypto_core_ed25519_is_valid_point(c2), 'c2 must be valid point')
 
   sodium.crypto_core_ed25519_add(out, c1, c2)
-  assert(sodium.crypto_core_ed25519_is_valid_point(out))
 }
