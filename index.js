@@ -2,6 +2,11 @@ var sodium = require('sodium-native')
 var assert = require('nanoassert')
 var codec = require('biguintle')
 
+var PARAM_BYTES = sodium.crypto_scalarmult_ed25519_BYTES
+var COMMITMENT_BYTES = sodium.crypto_scalarmult_ed25519_BYTES
+var DATA_BYTES = sodium.crypto_scalarmult_ed25519_SCALARBYTES
+var RBYTES = sodium.crypto_scalarmult_ed25519_SCALARBYTES
+
 var ORDER = 2n ** 252n + 27742317777372353535851937790883648493n
 
 module.exports = {
@@ -11,15 +16,16 @@ module.exports = {
   addCommitments,
   addDecommitments,
 
-  PARAM_BYTES: sodium.crypto_scalarmult_ed25519_BYTES,
-  COMMITMENT_BYTES: sodium.crypto_scalarmult_ed25519_BYTES,
-  DATA_BYTES: sodium.crypto_scalarmult_ed25519_SCALARBYTES,
-  RBYTES: sodium.crypto_scalarmult_ed25519_SCALARBYTES
+  PARAM_BYTES,
+  COMMITMENT_BYTES,
+  DATA_BYTES,
+  RBYTES,
+  ORDER
 }
 
 var rnd = sodium.sodium_malloc(sodium.crypto_core_ed25519_UNIFORMBYTES)
 function init (out) {
-  assert(out.byteLength === sodium.crypto_scalarmult_ed25519_BYTES)
+  assert(out.byteLength === PARAM_BYTES, 'out must be PARAM_BYTES long')
 
   sodium.randombytes_buf(rnd)
   sodium.crypto_core_ed25519_from_uniform(out, rnd)
@@ -30,11 +36,11 @@ function init (out) {
 var xG = sodium.sodium_malloc(sodium.crypto_scalarmult_ed25519_BYTES)
 var rH = sodium.sodium_malloc(sodium.crypto_scalarmult_ed25519_BYTES)
 function commit (commitment, r, x, H, rr) {
-  assert(commitment.byteLength === sodium.crypto_scalarmult_ed25519_BYTES)
-  assert(r.byteLength === sodium.crypto_scalarmult_ed25519_SCALARBYTES)
-  assert(x.byteLength === sodium.crypto_scalarmult_ed25519_SCALARBYTES)
-  assert(H.byteLength === sodium.crypto_scalarmult_ed25519_BYTES)
   assert(sodium.sodium_is_zero(x, x.byteLength) === false)
+  assert(commitment.byteLength === COMMITMENT_BYTES, 'commitment must be COMMITMENT_BYTES long')
+  assert(r.byteLength === RBYTES, 'r must be RBYTES long')
+  assert(x.byteLength === DATA_BYTES, 'x must be DATA_BYTES long')
+  assert(H.byteLength === PARAM_BYTES, 'H must be PARAM_BYTES long')
   assert(sodium.crypto_core_ed25519_is_valid_point(H))
 
   sodium.crypto_scalarmult_ed25519_base(xG, x)
@@ -54,19 +60,13 @@ function commit (commitment, r, x, H, rr) {
 
 var c = sodium.sodium_malloc(sodium.crypto_core_ed25519_BYTES)
 function open (commitment, r, x, H) {
-  assert(commitment.byteLength === sodium.crypto_scalarmult_ed25519_BYTES)
-  assert(r.byteLength === sodium.crypto_scalarmult_ed25519_SCALARBYTES)
-  assert(x.byteLength === sodium.crypto_scalarmult_ed25519_SCALARBYTES)
-  assert(H.byteLength === sodium.crypto_scalarmult_ed25519_BYTES)
   // assert(sodium.crypto_core_ed25519_is_valid_point(commitment))
-  assert(sodium.crypto_core_ed25519_is_valid_point(H))
-  assert(sodium.sodium_is_zero(r, r.byteLength) === false, 'r must be valid scalar')
-  assert(sodium.sodium_is_zero(x, x.byteLength) === false, 'x must be valid scalar')
-
   sodium.crypto_scalarmult_ed25519_base(xG, x)
   assert(sodium.crypto_core_ed25519_is_valid_point(xG))
   sodium.crypto_scalarmult_ed25519(rH, r, H)
   assert(sodium.crypto_core_ed25519_is_valid_point(rH))
+  // defer all other assertions to `commit`
+  assert(sodium.crypto_core_ed25519_is_valid_point(commitment), 'commitment must be a valid point')
 
   sodium.crypto_core_ed25519_add(c, xG, rH)
   sodium.sodium_memzero(xG)
