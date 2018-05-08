@@ -11,6 +11,7 @@ var ORDER = 2n ** 252n + 27742317777372353535851937790883648493n
 
 module.exports = {
   init,
+  nums,
   commit,
   open,
   addCommitments,
@@ -28,6 +29,15 @@ function init (out) {
   assert(out.byteLength === PARAM_BYTES, 'out must be PARAM_BYTES long')
 
   sodium.randombytes_buf(rnd)
+  sodium.crypto_core_ed25519_from_uniform(out, rnd)
+  sodium.sodium_memzero(rnd)
+}
+
+function nums (out, input) {
+  assert(out.byteLength === PARAM_BYTES, 'out must be PARAM_BYTES long')
+  assert(out.byteLength, 'input must be Buffer or TypedArray')
+
+  sodium.crypto_generichash(rnd, input)
   sodium.crypto_core_ed25519_from_uniform(out, rnd)
   sodium.sodium_memzero(rnd)
 }
