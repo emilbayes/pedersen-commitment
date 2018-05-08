@@ -7,10 +7,9 @@ var sodium = require('sodium-native')
 test('simple', function (assert) {
   var H = Buffer.alloc(pedersen.PARAM_BYTES)
   pedersen.init(H)
-
-  var a = unif(2n ** 256n)
+  var a = unif(pedersen.ORDER)
   var ab = codec.encode(a, Buffer.alloc(pedersen.DATA_BYTES))
-  var b = unif(2n ** 256n)
+  var b = unif(pedersen.ORDER)
   var bb = codec.encode(b, Buffer.alloc(pedersen.DATA_BYTES))
 
   var ca = Buffer.alloc(pedersen.COMMITMENT_BYTES)
@@ -24,9 +23,7 @@ test('simple', function (assert) {
   assert.ok(pedersen.open(ca, ra, ab, H))
   assert.ok(pedersen.open(cb, rb, bb, H))
 
-  var sum = BigInt.asUintN(pedersen.DATA_BYTES * 8, a + b)
-  var sumb = codec.encode(sum, Buffer.alloc(pedersen.DATA_BYTES))
-  pedersen.addDecommitments(sumb, ab, bb)
+  var sumb = codec.encode((a + b) % pedersen.ORDER, Buffer.alloc(pedersen.DATA_BYTES))
   var sumr = Buffer.alloc(pedersen.RBYTES)
   var sumc = Buffer.alloc(pedersen.COMMITMENT_BYTES)
 
@@ -45,28 +42,57 @@ test('simple', function (assert) {
 })
 
 test('sum', function (assert) {
-  var rnds = Array.from({length: 10}, _ => unif(2n ** 256n))
-
-  var sum = codec.encode(BigInt.asUintN(pedersen.DATA_BYTES * 8, rnds.reduce((s, e) => s + e, 0n)), Buffer.alloc(pedersen.DATA_BYTES))
-
-  var xs = rnds.map(n => codec.encode(n, Buffer.alloc(pedersen.DATA_BYTES)))
-  console.log(xs)
-
   var H = Buffer.alloc(pedersen.PARAM_BYTES)
   pedersen.init(H)
 
+  // we can maximum contain a sum of ~ 2^252 due to the order of the group, so we
+  // must make sure that the total sum is below this
+  var len = 10000
+  var MAX = pedersen.ORDER / BigInt(len) // - 2n ** BigInt(Math.ceil(Math.log2(len)))
+  var rnds = Array.from({length: len}, _ => unif(MAX))
+
+  var xs = rnds.map(n => codec.encode(n, Buffer.alloc(pedersen.DATA_BYTES)))
+
+  // assert.same(rnds, xs.map(n => codec.decode(n)))
+
   var cs = rnds.map(_ => Buffer.alloc(pedersen.COMMITMENT_BYTES))
   var keys = rnds.map(_ => Buffer.alloc(pedersen.RBYTES))
+  console.time('commit')
   cs.forEach((c, i) => pedersen.commit(c, keys[i], xs[i], H))
+  console.timeEnd('commit')
+
+  // assert.ok(cs.map((c, i) => pedersen.open(c, keys[i], xs[i], H)).every(Boolean))
 
   var sumcs = Buffer.alloc(pedersen.COMMITMENT_BYTES)
   var sumrs = Buffer.alloc(pedersen.RBYTES)
+  var sumcsp = Buffer.alloc(pedersen.COMMITMENT_BYTES)
+  var sumrsp = Buffer.alloc(pedersen.RBYTES)
 
-  for (var i = 0; i < cs.length; i += 2) {
-    pedersen.addCommitments(sumcs, cs[i], cs[i + 1])
-    pedersen.addDecommitments(sumrs, keys[i], keys[i + 1])
+  console.time('add')
+  sumcsp.set(cs[0])
+  sumrsp.set(keys[0])
+  var sum = rnds[0]
+  var sumb = Buffer.alloc(pedersen.DATA_BYTES)
+  for (var i = 1; i < cs.length; i++) {
+    pedersen.addCommitments(sumcs, sumcsp, cs[i])
+    pedersen.addDecommitments(sumrs, sumrsp, keys[i])
+    sum = (sum + rnds[i]) % pedersen.ORDER
+    codec.encode(sum, sumb, 0)
+    sumb.fill(0, codec.encode.bytes)
+    if (codec.decode(sumb) !== sum) assert.fail(sum)
+
+    if(pedersen.open(sumcs, sumrs, sumb, H) === false) {
+      console.log(i)
+      assert.fail()
+      break
+    }
+
+    sumcsp.set(sumcs)
+    sumrsp.set(sumrs)
+    sumcs.fill(0)
+    sumrs.fill(0)
   }
+  console.timeEnd('add')
 
-  assert.ok(pedersen.open(sumcs, sumrs, sum, H))
   assert.end()
 })
