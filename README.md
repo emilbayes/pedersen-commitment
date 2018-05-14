@@ -24,6 +24,8 @@ var pedersen = require('pedersen-commitments')
 
 ### `pedersen.init(H)`
 
+### `pedersen.nums(H, buf)`
+
 ### `pedersen.commit(commitment, decommitment, value, H)`
 
 ### `var bool = pedersen.open(commitment, decommitment, value, H)`
