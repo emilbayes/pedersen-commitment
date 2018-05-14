@@ -28,9 +28,9 @@ var pedersen = require('pedersen-commitments')
 
 ### `var bool = pedersen.open(commitment, decommitment, value, H)`
 
-### `pedersen.addCommitments(sum, a, b)`
+### `pedersen.accumulateCommitments(acc, c)`
 
-### `pedersen.addDecommitments(sum, a, b)`
+### `pedersen.accumulateDecommitments(acc, r)`
 Note: this function is **NOT** constant-time.
 
 ## Install

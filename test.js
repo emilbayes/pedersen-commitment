@@ -27,8 +27,10 @@ test('simple', function (assert) {
   var sumr = Buffer.alloc(pedersen.RBYTES)
   var sumc = Buffer.alloc(pedersen.COMMITMENT_BYTES)
 
-  pedersen.addCommitments(sumc, ca, cb)
-  pedersen.addDecommitments(sumr, ra, rb)
+  sumc.set(ca)
+  pedersen.accumulateCommitments(sumc, cb)
+  sumr.set(ra)
+  pedersen.accumulateDecommitments(sumr, rb)
 
   var cc = Buffer.alloc(pedersen.COMMITMENT_BYTES)
   var rc = Buffer.alloc(pedersen.RBYTES)
@@ -65,32 +67,24 @@ test('sum', function (assert) {
 
   var sumcs = Buffer.alloc(pedersen.COMMITMENT_BYTES)
   var sumrs = Buffer.alloc(pedersen.RBYTES)
-  var sumcsp = Buffer.alloc(pedersen.COMMITMENT_BYTES)
-  var sumrsp = Buffer.alloc(pedersen.RBYTES)
 
   console.time('add')
-  sumcsp.set(cs[0])
-  sumrsp.set(keys[0])
+  sumcs.set(cs[0])
+  sumrs.set(keys[0])
   var sum = rnds[0]
   var sumb = Buffer.alloc(pedersen.DATA_BYTES)
   for (var i = 1; i < cs.length; i++) {
-    pedersen.addCommitments(sumcs, sumcsp, cs[i])
-    pedersen.addDecommitments(sumrs, sumrsp, keys[i])
+    pedersen.accumulateCommitments(sumcs, cs[i])
+    pedersen.accumulateDecommitments(sumrs, keys[i])
     sum = (sum + rnds[i]) % pedersen.ORDER
     codec.encode(sum, sumb, 0)
     sumb.fill(0, codec.encode.bytes)
     if (codec.decode(sumb) !== sum) assert.fail(sum)
 
     if(pedersen.open(sumcs, sumrs, sumb, H) === false) {
-      console.log(i)
-      assert.fail()
+      assert.fail('Failed to open commitment at iteration ' + i)
       break
     }
-
-    sumcsp.set(sumcs)
-    sumrsp.set(sumrs)
-    sumcs.fill(0)
-    sumrs.fill(0)
   }
   console.timeEnd('add')
 
