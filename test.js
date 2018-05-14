@@ -55,20 +55,17 @@ test('sum', function (assert) {
 
   var xs = rnds.map(n => codec.encode(n, Buffer.alloc(pedersen.DATA_BYTES)))
 
-  // assert.same(rnds, xs.map(n => codec.decode(n)))
+  assert.same(rnds, xs.map(n => codec.decode(n)), 'BigUintLE encoding is correct')
 
   var cs = rnds.map(_ => Buffer.alloc(pedersen.COMMITMENT_BYTES))
   var keys = rnds.map(_ => Buffer.alloc(pedersen.RBYTES))
-  console.time('commit')
   cs.forEach((c, i) => pedersen.commit(c, keys[i], xs[i], H))
-  console.timeEnd('commit')
 
-  // assert.ok(cs.map((c, i) => pedersen.open(c, keys[i], xs[i], H)).every(Boolean))
+  assert.ok(cs.map((c, i) => pedersen.open(c, keys[i], xs[i], H)).every(Boolean), 'all commitments can be openend')
 
   var sumcs = Buffer.alloc(pedersen.COMMITMENT_BYTES)
   var sumrs = Buffer.alloc(pedersen.RBYTES)
 
-  console.time('add')
   sumcs.set(cs[0])
   sumrs.set(keys[0])
   var sum = rnds[0]
@@ -86,7 +83,6 @@ test('sum', function (assert) {
       break
     }
   }
-  console.timeEnd('add')
 
   assert.end()
 })
