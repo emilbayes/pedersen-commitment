@@ -7,6 +7,7 @@ var COMMITMENT_BYTES = sodium.crypto_scalarmult_ed25519_BYTES
 var DATA_BYTES = sodium.crypto_scalarmult_ed25519_SCALARBYTES
 var RBYTES = sodium.crypto_scalarmult_ed25519_SCALARBYTES
 
+// Often called ell in the litterature, the number of elements in the cyclic grp
 var ORDER = 2n ** 252n + 27742317777372353535851937790883648493n
 
 module.exports = {
@@ -54,6 +55,7 @@ function commit (commitment, r, x, H, useR) {
   sodium.crypto_scalarmult_ed25519_base(xG, x)
   if (useR !== true) {
     sodium.randombytes_buf(r)
+    // Make r < ell
     r[31] &= 0b00001111
   }
   sodium.crypto_scalarmult_ed25519(rH, r, H)
